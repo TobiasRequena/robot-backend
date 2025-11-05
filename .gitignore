@@ -1,0 +1,24 @@
+# Dependencias
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Entornos
+.env
+.env.local
+.env.*.local
+
+# Cobertura de tests
+coverage/
+.nyc_output/
+
+# Compilados temporales
+dist/
+build/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
