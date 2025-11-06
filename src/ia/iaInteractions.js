@@ -81,12 +81,34 @@ async function ejecutarAnalisisIA() {
                                         type: "object",
                                         properties: {
                                             ciudad: { type: "string", nullable: true },
-                                            temperatura: { type: "number", nullable: true },
-                                            humedad: { type: "number", nullable: true },
+                                            region: { type: "string", nullable: true },
+                                            pais: { type: "string", nullable: true },
+                                            latitud: { type: "number", nullable: true },
+                                            longitud: { type: "number", nullable: true },
+                                            temperatura_c: { type: "number", nullable: true },
                                             condicion: { type: "string", nullable: true },
-                                            viento_kph: { type: "number", nullable: true }
+                                            viento_kph: { type: "number", nullable: true },
+                                            presion_mb: { type: "number", nullable: true },
+                                            humedad: { type: "number", nullable: true },
+                                            nubosidad: { type: "number", nullable: true },
+                                            sensacion_termica_c: { type: "number", nullable: true },
+                                            visibilidad_km: { type: "number", nullable: true },
                                         },
-                                        required: ["ciudad", "temperatura", "humedad", "condicion", "viento_kph"],
+                                        required: [
+                                            "ciudad",
+                                            "region",
+                                            "pais",
+                                            "latitud",
+                                            "longitud",
+                                            "temperatura_c",
+                                            "condicion",
+                                            "viento_kph",
+                                            "presion_mb",
+                                            "humedad",
+                                            "nubosidad",
+                                            "sensacion_termica_c",
+                                            "visibilidad_km"
+                                        ],
                                         additionalProperties: false
                                     }
                                 },

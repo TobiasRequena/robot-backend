@@ -8,7 +8,7 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 const weatherApi = process.env.WEATHER_API_KEY;
-const ciudad = 'Villa María, Córdoba, Argentina';
+const ciudad = 'Villa Maria, Córdoba, Argentina';
 
 export const guardarClima = async () => {
     try {
