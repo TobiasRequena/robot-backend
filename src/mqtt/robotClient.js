@@ -1,188 +1,91 @@
+import express from 'express';
 import mqtt from 'mqtt';
-import { insertarDatos, supabase } from '../database.js';
+import cors from 'cors';
+import {insertarDatos} from '../database.js';
 
-const MQTT_BROKER = process.env.MQTT_BROKER || 'mqtt://localhost:1883';
-const ROBOT_ID = parseInt(process.env.ROBOT_ID) || 1;
-const USER_ID = parseInt(process.env.DEFAULT_USER_ID) || 1;
+const router = express.Router();
+// app.use(cors());
+// app.use(express.json());
 
-let mqttClient;
-let sensorDataBuffer = {};
-let wssInstance = null;
+// --- CONFIGURACIÓN MQTT ---
+const brokerUrl = 'mqtts://569064c9fb5a44a9bf239081608ad7f2.s1.eu.hivemq.cloud:8883';
+const options = {
+    username: 'Domus',
+    password: 'Domus1234+',
+    protocol: 'mqtts',
+};
 
-/**
- * Inicializa el cliente MQTT
- */
-export function initMQTT(wss) {
-    wssInstance = wss;
-    mqttClient = mqtt.connect(MQTT_BROKER);
+const mqttClient = mqtt.connect(brokerUrl, options);
 
-    mqttClient.on('connect', () => {
-        console.log('✅ Conectado a broker MQTT');
+// --- VARIABLES ---
+let mediciones = []; // Guarda las últimas 12 lecturas (1 min)
+let ultimoDatoRobot = null;
 
-        mqttClient.subscribe('robot/sensores/#');
-        mqttClient.subscribe('robot/posicion/#');
-        mqttClient.subscribe('robot/lidar/#');
-        mqttClient.subscribe('robot/navegacion/#');
-        mqttClient.subscribe('robot/detecciones/#');
+// --- CONEXIÓN MQTT ---
+mqttClient.on('connect', () => {
+    console.log('🖥 Conectado al broker MQTT');
+    mqttClient.subscribe(['robot/sensores'], (err) => {
+        if (!err) console.log('✅ Suscripto a robot/sensores');
+        else console.error('❌ Error al suscribirse:', err);
     });
+});
 
-    mqttClient.on('message', async (topic, message) => {
-        const value = message.toString();
-        console.log(`📡 MQTT: ${topic} = ${value}`);
-
-        const tipoSensorMap = {
-            'robot/sensores/temperatura': { tipo: 'temperatura', unidad: '°C' },
-            'robot/sensores/humedad': { tipo: 'humedad', unidad: '%' },
-            'robot/sensores/co2': { tipo: 'co2', unidad: 'ppm' },
-            'robot/sensores/pm25': { tipo: 'pm25', unidad: 'µg/m³' },
-            'robot/sensores/co': { tipo: 'co', unidad: 'ppm' },
-            'robot/sensores/luz': { tipo: 'luz', unidad: 'lux' },
-            'robot/sensores/ruido': { tipo: 'ruido', unidad: 'dB' },
-            'robot/posicion/x': { tipo: 'posicion_x', unidad: 'cm' },
-            'robot/posicion/y': { tipo: 'posicion_y', unidad: 'cm' },
-            'robot/posicion/angulo': { tipo: 'angulo', unidad: '°' },
-            'robot/navegacion/bateria': { tipo: 'bateria', unidad: '%' },
-            'robot/lidar/distancia': { tipo: 'lidar_distancia', unidad: 'cm' }
-        };
-
-        const config = tipoSensorMap[topic];
-        if (config) {
-            const numValue = parseFloat(value);
-            sensorDataBuffer[topic] = {
-                tipo_sensor: config.tipo,
-                valor: isNaN(numValue) ? 0 : numValue,
-                unidad: config.unidad,
-                timestamp: new Date().toISOString()
-            };
-        }
-
-        // Broadcast WebSocket
-        if (wssInstance) {
-            wssInstance.clients.forEach(client => {
-                if (client.readyState === 1) {
-                    client.send(JSON.stringify({
-                        tipo: 'sensor_update',
-                        topic,
-                        value,
-                        timestamp: new Date().toISOString()
-                    }));
-                }
-            });
-        }
-
-        // Detectar objetos
-        if (topic === 'robot/detecciones/objeto') {
-            try {
-                const deteccion = JSON.parse(value);
-                await insertarDatos('detecciones_objeto', {
-                    user_id: USER_ID,
-                    dispositivo_id: ROBOT_ID,
-                    objeto_detectado: deteccion.objeto,
-                    confianza: deteccion.confianza,
-                    posicion_x: deteccion.x,
-                    posicion_y: deteccion.y,
-                    distancia: deteccion.distancia,
-                    metadata: deteccion
-                });
-            } catch (err) {
-                console.error('Error procesando detección:', err);
-            }
-        }
-
-        // Guardar posición
-        if (topic.includes('robot/posicion/')) {
-            try {
-                const posX = parseFloat(sensorDataBuffer['robot/posicion/x']?.valor || 0);
-                const posY = parseFloat(sensorDataBuffer['robot/posicion/y']?.valor || 0);
-
-                if (posX !== 0 || posY !== 0) {
-                    await insertarDatos('posicion_robot', {
-                        user_id: USER_ID,
-                        dispositivo_id: ROBOT_ID,
-                        x: posX,
-                        y: posY,
-                        angulo: parseFloat(sensorDataBuffer['robot/posicion/angulo']?.valor || 0),
-                        bateria: parseFloat(sensorDataBuffer['robot/navegacion/bateria']?.valor || 100),
-                        estado: sensorDataBuffer['robot/navegacion/estado'] || 'activo'
-                    });
-                }
-            } catch (err) {
-                console.error('Error guardando posición:', err);
-            }
-        }
-    });
-
-    mqttClient.on('error', (err) => {
-        console.error('❌ Error MQTT:', err);
-    });
-
-    return mqttClient;
-}
-
-/**
- * Enviar comando al robot
- */
-export function enviarComandoRobot(comando) {
-    if (!mqttClient || !mqttClient.connected) {
-        console.error('❌ Cliente MQTT no conectado');
-        return false;
-    }
-
-    const { accion, datos } = comando;
-    const topicos = {
-        'mover': { topic: 'robot/cmd/movimiento', payload: datos },
-        'rotar': { topic: 'robot/cmd/rotacion', payload: datos },
-        'parar': { topic: 'robot/cmd/parar', payload: true },
-        'buscar': { topic: 'robot/cmd/buscar_objeto', payload: datos },
-        'inicio': { topic: 'robot/cmd/volver_inicio', payload: true },
-        'calibrar': { topic: 'robot/cmd/calibrar_sensores', payload: true }
-    };
-
-    const config = topicos[accion];
-    if (config) {
-        const payload = typeof config.payload === 'string'
-            ? config.payload
-            : JSON.stringify(config.payload);
-
-        mqttClient.publish(config.topic, payload);
-        console.log(`📤 Comando enviado: ${accion}`);
-        return true;
-    }
-
-    return false;
-}
-
-/**
- * Guardar datos en batch cada 30 segundos
- */
-export async function guardarDatosBuffer() {
-    if (Object.keys(sensorDataBuffer).length === 0) return;
-
+// --- MANEJO DE MENSAJES MQTT ---
+mqttClient.on('message', async (topic, message) => {
     try {
-        const datos = Object.values(sensorDataBuffer).map(d => ({
-            user_id: USER_ID,
-            dispositivo_id: ROBOT_ID,
-            tipo_sensor: d.tipo_sensor,
-            valor: d.valor,
-            unidad: d.unidad,
-            metadata: { mqtt_topic: d.timestamp }
-        }));
+        const data = JSON.parse(message.toString());
+        if (topic === 'robot/sensores') {
+            ultimoDatoRobot = data;
+            const { temperatura, humedad, gas } = data;
 
-        const { error } = await supabase
-            .from('sensor_data')
-            .insert(datos);
+            // Guardamos solo temp y hum
+            mediciones.push({ temperatura, humedad, gas });
 
-        if (!error) {
-            console.log(`✅ ${datos.length} sensores guardados`);
-            sensorDataBuffer = {};
-        } else {
-            console.error('Error guardando datos:', error);
+            // Si ya hay 12 mediciones (1 minuto)
+            if (mediciones.length >= 12) {
+                // Calcular promedio
+                const promedioTemp = Math.round(
+                (mediciones.reduce((acc, d) => acc + d.temperatura, 0) / mediciones.length) * 100
+                ) / 100;
+
+                const promedioHum = Math.round(
+                (mediciones.reduce((acc, d) => acc + d.humedad, 0) / mediciones.length) * 100
+                ) / 100;
+
+                const promedioGas = Math.round(
+                (mediciones.reduce((acc, d) => acc + d.gas, 0) / mediciones.length) * 100
+                ) / 100;
+
+                // Guardar en Supabase
+                const result = await insertarDatos(
+                    'sensores_Data',{
+                    temperatura: promedioTemp,
+                    humedad: promedioHum,
+                    gas: promedioGas
+                    }
+                );
+
+                if (result.error) console.error('❌ Error al guardar en Supabase:', result.error);
+                else console.log('✅ Promedio guardado en Supabase');
+
+                // Limpiar mediciones
+                mediciones = [];
+            }
         }
     } catch (err) {
-        console.error('❌ Error guardando datos:', err);
+        console.error('❌ Error al parsear mensaje MQTT:', err);
     }
-}
+});
 
-export function getMQTTClient() {
-    return mqttClient;
-}
+// --- ENDPOINTS HTTP ---
+
+// Último dato recibido
+router.get('/api/sensores', (req, res) => {
+
+    const { temperatura, humedad, gas } = ultimoDatoRobot || {};
+
+    if (ultimoDatoRobot) res.json({ temperatura, humedad, gas });
+    else res.status(404).json({ msg: 'Aún no hay datos del robot' });
+});
+
+export default router;
