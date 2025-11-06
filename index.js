@@ -31,6 +31,37 @@ import { start } from 'repl';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Permitir lista de orígenes desde env (coma-separado) o localhost por defecto
+/* const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(s => s.trim())
+    : ['http://localhost:5173', 'http://localhost:3000']; */
+    
+// CORS
+const allowedOrigins =
+    process.env.CORS_ORIGIN?.split(',').map(s => s.trim()) || '*';
+
+app.use(
+    cors({
+        origin: (origin, callback) => {
+            // Permitir solicitudes sin origin (herramientas tipo Postman)
+            if (!origin) return callback(null, true);
+            
+            if (allowedOrigins.includes('*')) {
+                return callback(null, true);
+            }
+            
+            if (allowedOrigins.includes(origin)) {
+                return callback(null, true);
+            }
+            
+            return callback(new Error('Not allowed by CORS'));
+        },
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization']
+    })
+);
+
 // ==================
 // MIDDLEWARES
 // ==================
@@ -39,10 +70,7 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use('/clima', climaRoute);
 app.use('/respuestaAI', iaRoutes);
 
-app.use(cors({
-  origin: '*',
-  credentials: false
-}));
+
 
 // app.use(loggerMiddleware);
 
