@@ -36,10 +36,10 @@ mqttClient.on('message', async (topic, message) => {
         const data = JSON.parse(message.toString());
         if (topic === 'robot/sensores') {
             ultimoDatoRobot = data;
-            const { temperatura, humedad, gas } = data;
+            const { temperatura, humedad, gas = gas/100 } = data;
 
             // Guardamos solo temp y hum
-            mediciones.push({ temperatura, humedad, gas });
+            mediciones.push({ temperatura, humedad, gas: gas / 100 });
 
             // Si ya hay 12 mediciones (1 minuto)
             if (mediciones.length >= 12) {
