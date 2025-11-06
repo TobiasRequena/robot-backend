@@ -1,7 +1,6 @@
 import express from 'express';
 import { getOpenAIClient } from '../aiModel/aiModel.js';
-import { obtenerDatos, insertarDatos } from '../database.js';
-import { verificarToken } from '../auth/user.js';
+import { obtenerDatos, insertarDatos, supabase } from '../database.js';
 import { guardarClima } from '../apiClima/clima.js';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -12,23 +11,24 @@ async function ejecutarAnalisisIA() {
     }
 
     try {
-        const dispositivos = [
-            { id: 2, nombre: 'Sensor de temperatura' },
-            { id: 3, nombre: 'Sensor de humedad' }
-        ];
         const datosClimaCiudad = await guardarClima();
         const climaJSON = JSON.stringify(datosClimaCiudad, null, 2);
 
+        const { data: sensorData, error } = await supabase
+            .from("sensores_Data")
+            .select("*")
+            .order("id", { ascending: false })
+            .limit(1);
+
         let contexto = 'Datos más recientes de los sensores:\n\n';
 
-        for (const dispositivo of dispositivos) {
-            const result = await obtenerDatos('sensor_data', { dispositivo_id: dispositivo.id });
-            if (result.success && result.data.length > 0) {
-                const ultimo = result.data[result.data.length - 1];
-                contexto += `${dispositivo.nombre}:\n${JSON.stringify(ultimo, null, 2)}\n\n`;
-            } else {
-                contexto += `${dispositivo.nombre}: sin datos disponibles.\n\n`;
-            }
+        if (error) {
+            contexto += `Error al obtener los datos: ${error.message}\n\n`;
+        } else if (sensorData && sensorData.length > 0) {
+            const ultimo = sensorData[0];
+            contexto += `En este momento hay:\n${JSON.stringify(ultimo, null, 2)}\n\n`;
+        } else {
+            contexto += `Sin datos disponibles\n\n`;
         }
 
         const openai = getOpenAIClient();
@@ -71,9 +71,10 @@ async function ejecutarAnalisisIA() {
                                         type: "object",
                                         properties: {
                                             temperatura: { type: "number", nullable: true },
-                                            humedad: { type: "number", nullable: true }
+                                            humedad: { type: "number", nullable: true },
+                                            gas: { type: "number", nullable: true }
                                         },
-                                        required: ["temperatura", "humedad"],
+                                        required: ["temperatura", "humedad", "gas"],
                                         additionalProperties: false
                                     },
                                     exterior: {

@@ -14,15 +14,18 @@ import { initializeDatabase, verificarTablas } from './src/initDatabase.js';
 // Rutas
 import authRoutes from './src/auth/user.js';
 import sensorRoutes from './src/sensor/sensorRoutes.js';
-// import robotRoutes from './src/robot/controller.js';
+import robotRoutes from './src/robot/controller.js';
 import alertasRoutes from './src/alertas/alertasRoutes.js';
 import iaRoutes from './src/ia/iaRoutes.js';
 import sosRoutes from './src/sos/sosRoutes.js';
 import requestToAI from './src/aiModel/aiModelRoute.js';
 import climaRoute from './src/apiClima/climaRoute.js';
-import robotClient from './src/mqtt/robotClient.js';
 import { loggerMiddleware } from './src/utils/logger.js';
 import { start } from 'repl';
+// import { loggerMiddleware } from './src/utils/logger.js';
+// import { loggerMiddleware } from './src/utils/logger.js';
+// import { start } from 'repl';
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -129,11 +132,10 @@ app.get('/api/docs', (_req, res) => {
 // Rutas protegidas
 app.use('/api/auth', authRoutes);
 app.use('/api/sensors', sensorRoutes);
-// app.use('/api/robot', robotRoutes);
+app.use('/api/robot', robotRoutes);
 app.use('/api/alertas', alertasRoutes);
 app.use('/api/ia', iaRoutes);
 app.use('/api/sos', sosRoutes);
-app.use('/api/mqttRobot', robotClient);
 
 // Extra: endpoint AI
 app.use('/requestToAI', requestToAI);
